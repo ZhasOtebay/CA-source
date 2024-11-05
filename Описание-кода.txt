@@ -1,0 +1,196 @@
+
+### 1. Импорт библиотек
+
+```python
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
+import seaborn as sns
+import os
+from datetime import datetime
+import tkinter as tk
+from tkinter import filedialog, messagebox
+from openpyxl import load_workbook
+from openpyxl.drawing.image import Image
+```
+
+- **numpy**: используется для работы с массивами и матрицами, а также для выполнения математических операций.
+- **pandas**: библиотека для работы с данными в табличной форме, позволяет легко загружать, обрабатывать и анализировать данные.
+- **matplotlib и seaborn**: библиотеки для визуализации данных. Seaborn строит более сложные графики на основе matplotlib.
+- **os**: библиотека для взаимодействия с операционной системой, используется для работы с файловой системой.
+- **datetime**: модуль для работы с датами и временем.
+- **tkinter**: библиотека для создания графических интерфейсов (GUI) в Python.
+- **openpyxl**: библиотека для работы с Excel файлами, позволяет читать и записывать данные в формате .xlsx.
+
+### 2. Функция `plot_heatmap`
+
+```python
+def plot_heatmap(data, title, filename):
+    plt.figure(figsize=(10, 8))
+    sns.heatmap(data, annot=True, fmt=".2f", cmap='coolwarm', square=True, cbar_kws={"shrink": .8})
+    plt.title(title)
+    plt.savefig(filename, bbox_inches='tight')
+    plt.close()
+```
+
+- **Цель**: строит и сохраняет хитмап (heatmap) для заданной матрицы данных.
+- **Параметры**:
+  - `data`: матрица данных, которую нужно визуализировать.
+  - `title`: заголовок для графика.
+  - `filename`: имя файла, в который будет сохранен график.
+- **Процесс**:
+  - Создается фигура с заданными размерами.
+  - Используется `sns.heatmap` для создания хитмапа с аннотациями и определенной цветовой схемой.
+  - Заголовок устанавливается с помощью `plt.title`.
+  - График сохраняется в файл с помощью `plt.savefig`.
+  - Закрывается текущее окно графика, чтобы освободить ресурсы.
+
+### 3. Функция `plot_scatter`
+
+```python
+def plot_scatter(F, filename):
+    plt.figure(figsize=(10, 6))
+    plt.scatter(F[:, 0], F[:, 1], marker='o', alpha=0.7)
+    for i in range(len(F)):
+        plt.annotate(i, (F[i, 0] + 0.1, F[i, 1] + 0.1), fontsize=8, ha='center', va='center')
+    plt.title("Облако точек главных компонент")
+    plt.xlabel("ГК1")
+    plt.ylabel("ГК2")
+    plt.grid()
+    plt.savefig(filename, bbox_inches='tight')
+    plt.close()
+```
+
+- **Цель**: строит и сохраняет график облака точек главных компонент.
+- **Параметры**:
+  - `F`: матрица значений главных компонент (двумерные данные).
+  - `filename`: имя файла для сохранения графика.
+- **Процесс**:
+  - Создается фигура с заданными размерами.
+  - Используется `plt.scatter` для создания облака точек с заданной прозрачностью.
+  - Для каждой точки добавляется аннотация с номером, с небольшим смещением по координатам, чтобы избежать наложения.
+  - Устанавливаются заголовок и подписи осей.
+  - Сохраняется график в файл и закрывается.
+
+### 4. Функция `run_analysis`
+
+```python
+def run_analysis(source_path):
+    try:
+        # Загрузка данных из CSV с пятью колонками
+        X = pd.read_csv(source_path, encoding='ISO-8859-1')
+        X.columns = ['Column1', 'Column2', 'Column3', 'Column4', 'Column5']
+        
+        # Нормирование
+        Y = (X - X.mean()) / X.std(ddof=0)
+        
+        # Корреляционная матрица
+        R = Y.corr()
+        heatmap_file = 'correlation_heatmap.png'
+        plot_heatmap(R, "Матрица коэффициентов корреляции R", heatmap_file)
+
+        # Собственные значения и векторы
+        eigenvalues, eigenvectors = np.linalg.eig(R.values)
+        D = np.diag(eigenvalues)
+
+        # Упорядочение
+        indices = np.argsort(eigenvalues)[::-1]
+        sorted_eigenvalues = eigenvalues[indices]
+        sorted_eigenvectors = eigenvectors[:, indices]
+
+        q = np.sum(sorted_eigenvalues > 1) or 1
+        A = sorted_eigenvectors[:, :q] * np.sqrt(sorted_eigenvalues[indices[:q]])
+        F = Y.values @ A
+
+        # Визуализация облака точек главных компонент
+        scatter_file = 'scatter_plot.png'
+        plot_scatter(F, scatter_file)
+
+        # Сохранение результатов
+        current_time = datetime.now().strftime("%Y%m%d_%H%M%S")
+        output_file = os.path.join('output', f'результаты_компонентного_анализа_{current_time}.xlsx')
+        
+        with pd.ExcelWriter(output_file) as writer:
+            X.to_excel(writer, sheet_name='Исходные данные')
+            Y.to_excel(writer, sheet_name='Нормированные данные')
+            pd.DataFrame(R).to_excel(writer, sheet_name='Корреляционная матрица')
+            pd.DataFrame(D).to_excel(writer, sheet_name='Собственные значения')
+            pd.DataFrame(A).to_excel(writer, sheet_name='Матрица нагрузок')
+            pd.DataFrame(F).to_excel(writer, sheet_name='Значения ГК')
+
+        # Вставка хитмапа и облака точек в Excel
+        wb = load_workbook(output_file)
+        
+        # Вставляем хитмап
+        correlation_sheet = wb['Корреляционная матрица']
+        img1 = Image(heatmap_file)
+        correlation_sheet.add_image(img1, 'A10')  # Положение, где вставить
+
+        # Вставляем облако точек
+        scatter_sheet = wb['Значения ГК']
+        img2 = Image(scatter_file)
+        scatter_sheet.add_image(img2, 'A10')  # Положение, где вставить
+        
+        wb.save(output_file)
+
+        messagebox.showinfo("Успех", f"Результаты сохранены в файл: {output_file}")
+        
+    except Exception as e:
+        messagebox.showerror("Ошибка", str(e))
+```
+
+- **Цель**: основная функция для выполнения анализа главных компонент.
+- **Параметры**:
+  - `source_path`: путь к CSV файлу с данными.
+- **Процесс**:
+  - Загружается CSV файл в DataFrame с помощью `pd.read_csv`.
+  - Устанавливаются имена колонок.
+  - Нормализуются данные для дальнейшего анализа.
+  - Вычисляется корреляционная матрица и сохраняется как хитмап.
+  - Вычисляются собственные значения и собственные векторы.
+  - Упорядочиваются собственные значения и векторы.
+  - Определяется количество компонентов (q), которые имеют собственные значения больше 1.
+  - Вычисляются матрицы нагрузок и значения главных компонент.
+  - Сохраняются все результаты в Excel файл.
+  - Хитмап и облако точек вставляются в соответствующие листы Excel.
+  - Если всё успешно, показывается сообщение об успешном завершении; в противном случае обрабатывается ошибка.
+
+### 5. Функция `upload_file`
+
+```python
+def upload_file():
+    source_path = filedialog.askopenfilename(filetypes=[("CSV files", "*.csv")])
+    if source_path:
+        run_analysis(source_path)
+```
+
+- **Цель**: открывает диалоговое окно для выбора CSV файла и запускает анализ.
+- **Процесс**:
+  - Открывает диалог для выбора файла с помощью `filedialog.askopenfilename`.
+  - Если файл выбран, вызывается функция `run_analysis` с выбранным путём.
+
+### 6. Создание интерфейса
+
+```python
+root = tk.Tk()
+root.title("Анализ главных компонент")
+root.geometry("400x200")
+
+upload_button = tk.Button(root, text="Загрузить CSV файл", command=upload_file)
+upload_button.pack(pady=20)
+
+exit_button = tk.Button(root, text="Выход", command=root.quit)
+exit_button.pack(pady=20)
+
+root.mainloop()
+```
+
+- **Цель**: создает графический интерфейс для программы.
+- **Процесс**:
+  - Создает основное окно приложения с заданным заголовком и размером.
+  - Создаёт кнопку для загрузки CSV файла и кнопку для выхода из приложения.
+  - Запускает главный цикл интерфейса с помощью `root.mainloop()`.
+
+### Резюме
+
+Код представляет собой полное приложение для анализа главных компонент, с графическим интерфейсом для загрузки данных, визуал
